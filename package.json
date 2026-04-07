@@ -1,0 +1,31 @@
+{
+  "name": "ghostmind",
+  "version": "1.0.0",
+  "description": "AI Interview Assistant - Invisible on Windows",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "com.ghostmind.ai",
+    "productName": "GhostMind",
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asUser"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
