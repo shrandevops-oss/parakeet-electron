@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://api.anthropic.com; img-src 'self' data:;">
+<title>GhostMind</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #09090f;
+    --bg1: #0f1018;
+    --bg2: #161820;
+    --bg3: #1e2030;
+    --border: rgba(255,255,255,0.07);
+    --border-hi: rgba(255,255,255,0.16);
+    --text: #e2e4f0;
+    --text2: #8890aa;
+    --text3: #50566e;
+    --accent: #4fffb0;
+    --accent2: #7c6dfa;
+    --red: #ff5f5f;
+    --orange: #d4a574;
+    --font: 'Syne', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --r: 10px;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    font-family: var(--font);
+    background: transparent;
+    color: var(--text);
+    user-select: none;
+    overflow: hidden;
+  }
+
+  /* ── Outer shell with rounded corners + border */
+  #shell {
+    width: 100vw; height: 100vh;
+    background: var(--bg);
+    border: 1px solid var(--border-hi);
+    border-radius: 14px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
+  }
+
+  /* ── Title bar (draggable) */
+  #titlebar {
+    -webkit-app-region: drag;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px 8px;
+    background: var(--bg1);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #titlebar .logo { font-size: 13px; font-weight: 800; letter-spacing: -0.2px; flex: 1; }
+  #titlebar .logo span { color: var(--accent); }
+  .win-btn {
+    -webkit-app-region: no-drag;
+    width: 28px; height: 20px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--bg2);
+    font-size: 11px; cursor: pointer; color: var(--text2);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .win-btn:hover { background: var(--bg3); color: var(--text); }
+  .win-btn.close:hover { background: rgba(255,95,95,0.2); color: var(--red); }
+
+  /* ── Stealth bar */
+  #stealth-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    background: rgba(79,255,176,0.04);
+    border-bottom: 1px solid rgba(79,255,176,0.12);
+    font-size: 11px; font-family: var(--mono);
+    flex-shrink: 0;
+  }
+  .stealth-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: blink 2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  #stealth-bar span { color: var(--accent); font-weight: 500; }
+  #stealth-bar .shortcuts { margin-left: auto; color: var(--text3); font-size: 10px; }
+  .stealth-toggle {
+    -webkit-app-region: no-drag;
+    margin-left: 4px; padding: 2px 8px; border-radius: 99px;
+    border: 1px solid rgba(79,255,176,0.3); background: none;
+    color: var(--accent); font-size: 10px; font-family: var(--mono);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .stealth-toggle:hover { background: rgba(79,255,176,0.1); }
+  .stealth-toggle.off { border-color: rgba(255,95,95,0.3); color: var(--red); }
+
+  /* ── Tabs */
+  #tabs {
+    display: flex; gap: 2px; padding: 8px 12px 0;
+    background: var(--bg1); flex-shrink: 0;
+  }
+  .tab {
+    padding: 6px 12px; border-radius: 8px 8px 0 0;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    color: var(--text3); border: 1px solid transparent;
+    border-bottom: none; transition: all 0.15s;
+  }
+  .tab.active { background: var(--bg); color: var(--text); border-color: var(--border); }
+  .tab:not(.active):hover { color: var(--text2); }
+
+  /* ── Content area */
+  #content {
+    flex: 1; overflow-y: auto; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  #content::-webkit-scrollbar { width: 3px; }
+  #content::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 99px; }
+
+  /* Tab panels */
+  .panel { display: none; flex-direction: column; gap: 12px; }
+  .panel.active { display: flex; }
+
+  /* ── Cards */
+  .card {
+    background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--r); overflow: hidden;
+  }
+  .card-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+    color: var(--text2);
+  }
+  .card-head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+  .card-head .dot.green { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .card-head .dot.purple { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+  .card-body { padding: 12px; }
+
+  /* ── Session controls */
+  .session-row { display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 12px; font-weight: 700; font-family: var(--font);
+    cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
+    -webkit-app-region: no-drag;
+  }
+  .btn-primary { background: var(--accent); color: #000; box-shadow: 0 0 20px rgba(79,255,176,0.25); }
+  .btn-primary:hover { background: #6dffbc; }
+  .btn-danger { background: rgba(255,95,95,0.12); color: var(--red); border-color: rgba(255,95,95,0.25); }
+  .btn-danger:hover { background: rgba(255,95,95,0.2); }
+  .btn-ghost { background: var(--bg2); color: var(--text2); border-color: var(--border); }
+  .btn-ghost:hover { color: var(--text); background: var(--bg3); }
+  .btn-sm { padding: 5px 10px; font-size: 11px; border-radius: 6px; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .mic-btn {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--bg2); border: 2px solid var(--border);
+    color: var(--text2); cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; transition: all 0.2s; -webkit-app-region: no-drag;
+  }
+  .mic-btn.active {
+    background: rgba(79,255,176,0.1); border-color: var(--accent);
+    color: var(--accent); animation: mic-pulse 2s infinite;
+  }
+  .mic-btn.disabled { opacity: 0.3; cursor: not-allowed; }
+  @keyframes mic-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(79,255,176,0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(79,255,176,0); }
+  }
+
+  /* ── Waveform */
+  .waveform { display: flex; align-items: center; gap: 2px; height: 24px; }
+  .wave-bar {
+    width: 2px; background: var(--accent); border-radius: 99px;
+    animation: wave 1.2s ease-in-out infinite;
+  }
+  @keyframes wave { 0%,100%{height:3px;opacity:0.3} 50%{height:18px;opacity:1} }
+
+  /* ── Transcript */
+  .transcript {
+    min-height: 80px; max-height: 140px; overflow-y: auto;
+    font-family: var(--mono); font-size: 12px; line-height: 1.7;
+    color: var(--text2);
+  }
+  .transcript::-webkit-scrollbar { width: 3px; }
+  .transcript::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 99px; }
+  .t-line { margin-bottom: 6px; }
+  .t-role { font-size: 10px; font-weight: 500; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 1px; }
+  .t-role.interviewer { color: var(--accent2); }
+  .t-role.me { color: var(--accent); }
+  .t-interim { color: var(--text3); font-style: italic; }
+  .placeholder { color: var(--text3); font-size: 12px; font-style: italic; text-align: center; padding: 16px 0; }
+
+  /* ── Answer */
+  .answer-box {
+    min-height: 120px; max-height: 260px; overflow-y: auto;
+    font-size: 13px; line-height: 1.75; color: var(--text);
+    font-family: var(--mono); white-space: pre-wrap;
+  }
+  .answer-box::-webkit-scrollbar { width: 3px; }
+  .answer-box::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 99px; }
+  .code-block {
+    background: #0a0c12; border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; margin: 8px 0;
+    font-size: 11.5px; color: #9be89b; overflow-x: auto;
+    white-space: pre; font-family: var(--mono);
+  }
+  .thinking { color: var(--text3); font-size: 12px; font-style: italic; }
+  .thinking::after { content: '...'; animation: dots 1.5s infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
+
+  /* ── Answer actions */
+  .answer-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+  /* ── Manual input */
+  .input-row { display: flex; gap: 6px; }
+  .input, .textarea, .select {
+    width: 100%; padding: 8px 10px; border-radius: 8px;
+    background: var(--bg2); border: 1px solid var(--border);
+    color: var(--text); font-size: 12px; font-family: var(--font);
+    outline: none; transition: border-color 0.2s;
+    -webkit-app-region: no-drag;
+  }
+  .input:focus, .textarea:focus, .select:focus { border-color: var(--border-hi); }
+  .input::placeholder, .textarea::placeholder { color: var(--text3); }
+  .textarea { resize: vertical; min-height: 60px; line-height: 1.6; }
+  .select { cursor: pointer; }
+  .form-label { font-size: 10px; font-weight: 700; color: var(--text3); letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 5px; display: block; }
+  .form-group { margin-bottom: 10px; }
+
+  /* ── Notes */
+  .note { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 12px; }
+  .note-time { font-size: 10px; font-family: var(--mono); color: var(--text3); margin-bottom: 5px; }
+  .note-q { color: var(--accent2); font-weight: 600; margin-bottom: 4px; }
+  .note-a { color: var(--text2); line-height: 1.6; }
+
+  /* ── Settings */
+  .setting-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 12px; font-weight: 600; flex: 1; }
+  .setting-sub { font-size: 11px; color: var(--text3); display: block; margin-top: 2px; font-weight: 400; }
+  .toggle {
+    width: 36px; height: 20px; border-radius: 99px;
+    background: var(--bg3); border: 1px solid var(--border);
+    cursor: pointer; position: relative; transition: all 0.2s; flex-shrink: 0;
+    -webkit-app-region: no-drag;
+  }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text3); transition: all 0.2s;
+  }
+  .toggle.on { background: rgba(79,255,176,0.2); border-color: var(--accent); }
+  .toggle.on::after { left: 18px; background: var(--accent); }
+
+  /* ── Status bar */
+  #statusbar {
+    padding: 5px 14px; background: var(--bg1);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; font-family: var(--mono); color: var(--text3);
+    flex-shrink: 0;
+  }
+  #statusbar .s-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text3); }
+  #statusbar .s-dot.active { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
+  #timer { font-family: var(--mono); font-size: 11px; color: var(--accent); margin-left: auto; }
+
+  /* ── Platform badges */
+  .platform-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+  .platform-badge {
+    font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+    background: var(--bg2); border: 1px solid var(--border); color: var(--text2);
+  }
+  .platform-badge.ok { border-color: rgba(79,255,176,0.2); color: var(--accent); background: rgba(79,255,176,0.06); }
+
+  /* ── API key input */
+  .key-row { display: flex; gap: 6px; }
+  .key-input { font-family: var(--mono) !important; letter-spacing: 1px; }
+
+  /* ── Error/info banners */
+  .banner { padding: 8px 12px; border-radius: 8px; font-size: 11.5px; line-height: 1.5; margin-bottom: 4px; }
+  .banner.warn { background: rgba(212,165,116,0.1); border: 1px solid rgba(212,165,116,0.2); color: var(--orange); }
+  .banner.err { background: rgba(255,95,95,0.1); border: 1px solid rgba(255,95,95,0.2); color: var(--red); }
+  .banner.ok { background: rgba(79,255,176,0.08); border: 1px solid rgba(79,255,176,0.18); color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <!-- Title Bar -->
+  <div id="titlebar">
+    <span style="font-size:15px">👻</span>
+    <div class="logo">Ghost<span>Mind</span></div>
+    <button class="win-btn" onclick="window.ghostmind.minimize()">─</button>
+    <button class="win-btn close" onclick="window.ghostmind.hide()">✕</button>
+  </div>
+
+  <!-- Stealth Status Bar -->
+  <div id="stealth-bar">
+    <div class="stealth-dot" id="stealth-dot"></div>
+    <span id="stealth-label">STEALTH ACTIVE</span>
+    <button class="stealth-toggle" id="stealth-toggle-btn" onclick="toggleStealth()">ON</button>
+    <div class="shortcuts">Ctrl+Shift+P: Show/Hide &nbsp;|&nbsp; Ctrl+Shift+H: Panic Hide</div>
+  </div>
+
+  <!-- Tabs -->
+  <div id="tabs">
+    <div class="tab active" onclick="switchTab('session')">🎙 Session</div>
+    <div class="tab" onclick="switchTab('coding')">💻 Coding</div>
+    <div class="tab" onclick="switchTab('notes')">📋 Notes</div>
+    <div class="tab" onclick="switchTab('settings')">⚙ Settings</div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- SESSION TAB -->
+    <div class="panel active" id="panel-session">
+
+      <!-- Session Controls -->
+      <div class="card">
+        <div class="card-head">
+          <div class="dot" id="session-dot"></div>
+          <span id="session-label">Session Inactive</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn btn-primary btn-sm" id="start-btn" onclick="startSession()">▶ Start</button>
+            <button class="btn btn-danger btn-sm" id="end-btn" onclick="endSession()" disabled>■ End</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="session-row">
+            <button class="mic-btn disabled" id="mic-btn" onclick="toggleMic()">🎤</button>
+            <div style="flex:1">
+              <div style="font-size:11px;color:var(--text3);margin-bottom:5px" id="mic-status">Start a session to enable mic</div>
+              <div class="waveform" id="waveform" style="display:none">
+                <div class="wave-bar" style="animation-delay:0s"></div>
+                <div class="wave-bar" style="animation-delay:0.1s"></div>
+                <div class="wave-bar" style="animation-delay:0.2s"></div>
+                <div class="wave-bar" style="animation-delay:0.3s"></div>
+                <div class="wave-bar" style="animation-delay:0.4s"></div>
+                <div class="wave-bar" style="animation-delay:0.5s"></div>
+                <div class="wave-bar" style="animation-delay:0.6s"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Manual input -->
+          <div style="margin-top:10px" class="input-row">
+            <input class="input" id="manual-input" placeholder="Or type a question and press Enter..." onkeydown="if(event.key==='Enter')submitManual()">
+            <button class="btn btn-ghost btn-sm" onclick="submitManual()">⚡ Ask</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Transcript -->
+      <div class="card">
+        <div class="card-head">
+          <div class="dot purple" id="transcript-dot" style="background:var(--text3)"></div>
+          Live Transcript
+          <select class="select" id="lang-select" style="margin-left:auto;width:auto;padding:2px 6px;font-size:10px" onchange="onLangChange()">
+            <option value="en-US">English</option>
+            <option value="es-ES">Spanish</option>
+            <option value="fr-FR">French</option>
+            <option value="de-DE">German</option>
+            <option value="zh-CN">Mandarin</option>
+            <option value="hi-IN">Hindi</option>
+            <option value="pt-BR">Portuguese</option>
+            <option value="ja-JP">Japanese</option>
+            <option value="ko-KR">Korean</option>
+            <option value="ar-SA">Arabic</option>
+          </select>
+        </div>
+        <div class="card-body">
+          <div class="transcript" id="transcript">
+            <div class="placeholder">Transcript appears here when mic is active...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Answer -->
+      <div class="card" style="border-color:rgba(79,255,176,0.2)">
+        <div class="card-head">
+          <div class="dot green"></div>
+          AI Answer
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" id="copy-btn" onclick="copyAnswer()">📋 Copy</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearAnswer()">✕</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="answer-box" id="answer-box">
+            <span style="color:var(--text3);font-style:italic;font-size:12px">Answer will appear here after a question is detected...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CODING TAB -->
+    <div class="panel" id="panel-coding">
+      <div class="card">
+        <div class="card-head"><div class="dot purple"></div>Coding Interview Mode</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Preferred Language</label>
+            <div style="display:flex;gap:5px;flex-wrap:wrap" id="lang-chips"></div>
+          </div>
+          <div class="form-group" style="margin-top:8px">
+            <label class="form-label">Paste / Type Coding Question</label>
+            <textarea class="textarea" id="coding-input" placeholder="e.g. Given an array of integers, return indices of two numbers that add up to target..."></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="solveCoding()" id="solve-btn">⚡ Solve with Claude</button>
+        </div>
+      </div>
+      <div class="card" style="border-color:rgba(79,255,176,0.2)">
+        <div class="card-head">
+          <div class="dot green"></div>Solution
+          <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="copyCoding()">📋 Copy</button>
+        </div>
+        <div class="card-body">
+          <div class="answer-box" id="coding-answer" style="min-height:160px">
+            <span style="color:var(--text3);font-style:italic;font-size:12px">Solution appears here...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTES TAB -->
+    <div class="panel" id="panel-notes">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--text3)" id="notes-count">0 Q&As saved</span>
+        <button class="btn btn-ghost btn-sm" onclick="clearNotes()">Clear All</button>
+      </div>
+      <div id="notes-list">
+        <div class="placeholder">Notes saved automatically after each Q&A...</div>
+      </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div class="panel" id="panel-settings">
+
+      <!-- API Key -->
+      <div class="card">
+        <div class="card-head"><div class="dot"></div>Anthropic API Key</div>
+        <div class="card-body">
+          <div class="banner warn" style="margin-bottom:10px">
+            🔒 Your key is stored locally on this machine only. Never sent anywhere except Anthropic's API.
+          </div>
+          <div class="key-row">
+            <input class="input key-input" id="api-key-input" type="password" placeholder="sk-ant-api03-...">
+            <button class="btn btn-primary btn-sm" onclick="saveKey()">Save</button>
+          </div>
+          <div style="margin-top:6px;font-size:11px;color:var(--text3)" id="key-status">Not set</div>
+        </div>
+      </div>
+
+      <!-- Interview Settings -->
+      <div class="card">
+        <div class="card-head"><div class="dot"></div>Interview Settings</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Interview Type</label>
+            <select class="select" id="interview-type">
+              <option>Software Engineering</option>
+              <option>Data Science</option>
+              <option>Product Management</option>
+              <option>System Design</option>
+              <option>Behavioral</option>
+              <option>Finance</option>
+              <option>Marketing</option>
+              <option>General</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Resume / Context (optional)</label>
+            <textarea class="textarea" id="resume-ctx" placeholder="Paste your resume or key experience highlights..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Extra Instructions</label>
+            <textarea class="textarea" id="extra-ctx" placeholder="e.g. Company is Google, emphasize distributed systems, keep answers under 2 minutes..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stealth Settings -->
+      <div class="card">
+        <div class="card-head"><div class="dot green"></div>Stealth & Visibility</div>
+        <div class="card-body">
+          <div class="setting-row">
+            <div class="setting-label">
+              Screen Share Protection
+              <span class="setting-sub">Hide from Zoom, Teams, Meet, WebEx, Chime, Lark, CoderPad, HackerRank</span>
+            </div>
+            <div class="toggle on" id="toggle-screenshare" onclick="toggleScreenShare(this)"></div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              Hide from Taskbar
+              <span class="setting-sub">App lives in system tray only</span>
+            </div>
+            <div class="toggle on" id="toggle-taskbar"></div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              Always on Top
+              <span class="setting-sub">Float above all apps including fullscreen video calls</span>
+            </div>
+            <div class="toggle on" id="toggle-ontop" onclick="toggleAlwaysOnTop(this)"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Supported Platforms -->
+      <div class="card">
+        <div class="card-head"><div class="dot green"></div>Tested Platforms (Screen Share Invisible)</div>
+        <div class="card-body">
+          <div class="platform-grid">
+            <div class="platform-badge ok">✓ Zoom</div>
+            <div class="platform-badge ok">✓ Microsoft Teams</div>
+            <div class="platform-badge ok">✓ Google Meet</div>
+            <div class="platform-badge ok">✓ WebEx</div>
+            <div class="platform-badge ok">✓ Amazon Chime</div>
+            <div class="platform-badge ok">✓ Lark / Feishu</div>
+            <div class="platform-badge ok">✓ CoderPad</div>
+            <div class="platform-badge ok">✓ HackerRank</div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.6">
+            Uses Windows <code style="color:var(--accent2)">SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)</code> API via Electron's <code style="color:var(--accent2)">setContentProtection()</code>. The window is excluded at the OS graphics layer — no software can capture it.
+          </div>
+        </div>
+      </div>
+
+      <!-- Hotkeys -->
+      <div class="card">
+        <div class="card-head"><div class="dot"></div>Global Hotkeys</div>
+        <div class="card-body" style="font-size:12px;font-family:var(--mono)">
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+            <span style="color:var(--text2)">Show / Hide window</span>
+            <span style="color:var(--accent)">Ctrl+Shift+P</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+            <span style="color:var(--text2)">Start listening</span>
+            <span style="color:var(--accent)">Ctrl+Shift+A</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0">
+            <span style="color:var(--text2)">Panic hide instantly</span>
+            <span style="color:var(--red)">Ctrl+Shift+H</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /settings -->
+  </div><!-- /content -->
+
+  <!-- Status Bar -->
+  <div id="statusbar">
+    <div class="s-dot" id="status-dot"></div>
+    <span id="status-text">Ready</span>
+    <span id="timer" style="display:none">00:00</span>
+  </div>
+
+</div><!-- /shell -->
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  GhostMind — Renderer Logic
+// ═══════════════════════════════════════════════════════
+
+// ── State
+let sessionActive = false;
+let listening = false;
+let recognition = null;
+let timerInterval = null;
+let elapsedSeconds = 0;
+let notes = [];
+let currentAnswer = '';
+let codingAnswer = '';
+let stealthOn = true;
+let selectedCodeLang = 'Python';
+let interimText = '';
+
+const CODE_LANGS = ['Python', 'JavaScript', 'Java', 'C++', 'Go', 'TypeScript', 'Rust', 'C#'];
+
+// ── Init
+document.addEventListener('DOMContentLoaded', async () => {
+  buildCodeLangChips();
+  const savedKey = await window.ghostmind.getApiKey();
+  if (savedKey) {
+    document.getElementById('key-status').textContent = `Key saved: ${savedKey}`;
+    document.getElementById('key-status').style.color = 'var(--accent)';
+  }
+  // Listen for global shortcut trigger from main
+  window.ghostmind.onTriggerListen(() => toggleMic());
+});
+
+// ── Tab switching
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const ids = ['session','coding','notes','settings'];
+    t.classList.toggle('active', ids[i] === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => {
+    p.classList.toggle('active', p.id === `panel-${name}`);
+  });
+  if (name === 'notes') renderNotes();
+}
+
+// ── Session
+function startSession() {
+  sessionActive = true;
+  elapsedSeconds = 0;
+  document.getElementById('start-btn').disabled = true;
+  document.getElementById('end-btn').disabled = false;
+  document.getElementById('mic-btn').classList.remove('disabled');
+  document.getElementById('mic-status').textContent = 'Click mic to listen';
+  document.getElementById('session-dot').classList.add('green');
+  document.getElementById('session-label').textContent = 'Session Active';
+  document.getElementById('status-dot').classList.add('active');
+  document.getElementById('status-text').textContent = 'Session running';
+  document.getElementById('timer').style.display = 'block';
+  timerInterval = setInterval(() => {
+    elapsedSeconds++;
+    document.getElementById('timer').textContent = formatTime(elapsedSeconds);
+  }, 1000);
+}
+
+function endSession() {
+  stopMic();
+  sessionActive = false;
+  clearInterval(timerInterval);
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('end-btn').disabled = true;
+  document.getElementById('mic-btn').classList.add('disabled');
+  document.getElementById('mic-status').textContent = 'Start a session to enable mic';
+  document.getElementById('session-dot').classList.remove('green');
+  document.getElementById('session-label').textContent = 'Session Inactive';
+  document.getElementById('status-dot').classList.remove('active');
+  document.getElementById('status-text').textContent = `Session ended · ${formatTime(elapsedSeconds)} · ${notes.length} Q&As`;
+}
+
+// ── Mic / Speech Recognition
+function toggleMic() {
+  if (!sessionActive) return;
+  if (listening) { stopMic(); return; }
+  startMic();
+}
+
+function startMic() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    setStatus('Speech recognition not supported in this browser context', 'err');
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = document.getElementById('lang-select').value;
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    listening = true;
+    document.getElementById('mic-btn').classList.add('active');
+    document.getElementById('mic-status').textContent = 'Listening... (click to stop)';
+    document.getElementById('waveform').style.display = 'flex';
+    document.getElementById('transcript-dot').style.background = 'var(--accent2)';
+    document.getElementById('transcript-dot').style.boxShadow = '0 0 6px var(--accent2)';
+    setStatus('Listening...');
+  };
+
+  recognition.onresult = (event) => {
+    let interim = '';
+    let finalText = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finalText += t;
+      else interim += t;
+    }
+    interimText = interim;
+    renderTranscript(interim);
+    if (finalText.trim()) {
+      const q = finalText.trim().slice(0, 2000);
+      interimText = '';
+      stopMic();
+      processQuestion(q);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    const msgs = {
+      'not-allowed': 'Microphone access denied — check Windows privacy settings',
+      'no-speech': 'No speech detected — try again',
+      'network': 'Network error during speech recognition',
+    };
+    setStatus(msgs[e.error] || `Mic error: ${e.error}`, 'err');
+    stopMic();
+  };
+
+  // Auto-restart if it ends unexpectedly (browser STT can timeout)
+  recognition.onend = () => {
+    if (listening && sessionActive) {
+      try { recognition.start(); } catch(_) {}
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch(e) {
+    setStatus('Could not start mic: ' + e.message, 'err');
+  }
+}
+
+function stopMic() {
+  listening = false;
+  if (recognition) { try { recognition.stop(); } catch(_) {} recognition = null; }
+  document.getElementById('mic-btn').classList.remove('active');
+  document.getElementById('mic-status').textContent = 'Click mic to listen';
+  document.getElementById('waveform').style.display = 'none';
+  document.getElementById('transcript-dot').style.background = 'var(--text3)';
+  document.getElementById('transcript-dot').style.boxShadow = 'none';
+  interimText = '';
+  if (sessionActive) setStatus('Session running');
+}
+
+function onLangChange() {
+  if (recognition) { stopMic(); }
+}
+
+// ── Transcript render
+function renderTranscript(interim = '') {
+  const box = document.getElementById('transcript');
+  let html = '';
+  // Show all saved transcript lines from notes
+  const transcriptLines = notes.flatMap(n => [
+    `<div class="t-line"><div class="t-role interviewer">Interviewer</div><div>${escHtml(n.question)}</div></div>`
+  ]);
+  html = transcriptLines.join('');
+  if (interim) {
+    html += `<div class="t-line"><div class="t-role interviewer">Listening...</div><div class="t-interim">${escHtml(interim)}</div></div>`;
+  }
+  if (!html) {
+    html = '<div class="placeholder">Transcript appears here when mic is active...</div>';
+  }
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── Process question → Claude
+let _processing = false;
+async function processQuestion(question) {
+  if (_processing) return; // Prevent concurrent API calls
+  _processing = true;
+  setStatus('Generating answer...');
+  renderTranscript();
+
+  const interviewType = document.getElementById('interview-type').value;
+  const resumeCtx = document.getElementById('resume-ctx').value.trim().slice(0, 4000);
+  const extraCtx = document.getElementById('extra-ctx').value.trim().slice(0, 2000);
+
+  const systemPrompt = buildSystemPrompt(interviewType, resumeCtx, extraCtx);
+
+  // Show thinking state
+  document.getElementById('answer-box').innerHTML = '<span class="thinking">Generating answer</span>';
+
+  const result = await window.ghostmind.callClaude(question, systemPrompt);
+
+  if (result.error) {
+    document.getElementById('answer-box').innerHTML = `<span style="color:var(--red)">Error: ${escHtml(result.error)}</span>`;
+    setStatus('API error', 'err');
+    _processing = false;
+    return;
+  }
+
+  currentAnswer = result.text;
+  renderAnswer(result.text, 'answer-box');
+  setStatus('Answer ready');
+
+  // Save to notes
+  notes.push({
+    question,
+    answer: result.text,
+    time: new Date().toLocaleTimeString(),
+    type: interviewType,
+  });
+  document.getElementById('notes-count').textContent = `${notes.length} Q&As saved`;
+  renderTranscript();
+  _processing = false;
+}
+
+function sanitizeInput(str) {
+  // Strip triple backticks to prevent prompt injection, cap length
+  return String(str || '').replace(/```/g, "'''").slice(0, 4000);
+}
+
+function buildSystemPrompt(type, resume, extra) {
+  const codeLang = selectedCodeLang;
+  const safeResume = sanitizeInput(resume);
+  const safeExtra = sanitizeInput(extra);
+  const safeType = ['Software Engineering','Data Science','Product Management','System Design','Behavioral','Finance','Marketing','General'].includes(type) ? type : 'General';
+  return `You are an expert interview coach helping a candidate in a live ${safeType} interview.
+${safeResume ? `\nCandidate background:\n${safeResume}` : ''}
+${safeExtra ? `\nExtra context: ${safeExtra}` : ''}
+${safeType === 'Software Engineering' ? `\nPreferred coding language: ${codeLang}` : ''}
+
+Provide a clear, confident, well-structured answer the candidate can read or speak. For coding questions, include working code in triple backticks. Keep it concise but thorough. Never mention being an AI.`;
+}
+
+// ── Answer rendering (handles code blocks)
+function renderAnswer(text, targetId) {
+  const box = document.getElementById(targetId);
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  let html = '';
+  for (const part of parts) {
+    if (part.startsWith('```') && part.endsWith('```')) {
+      const code = part.replace(/^```\w*\n?/, '').replace(/```$/, '');
+      html += `<div class="code-block">${escHtml(code)}</div>`;
+    } else {
+      html += `<span style="white-space:pre-wrap">${escHtml(part)}</span>`;
+    }
+  }
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── Manual input
+function submitManual() {
+  const input = document.getElementById('manual-input');
+  const q = input.value.trim().slice(0, 2000);
+  if (!q) return;
+  if (!sessionActive) { setStatus('Start a session first', 'err'); return; }
+  input.value = '';
+  processQuestion(q);
+}
+
+// ── Coding tab
+function buildCodeLangChips() {
+  const container = document.getElementById('lang-chips');
+  container.innerHTML = ''; // Clear before re-render to prevent duplicates
+  CODE_LANGS.forEach(lang => {
+    const chip = document.createElement('div');
+    chip.textContent = lang;
+    chip.style.cssText = `
+      font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
+      cursor:pointer;border:1px solid var(--border);color:var(--text3);
+      background:none;transition:all 0.15s;font-family:var(--font);
+    `;
+    if (lang === selectedCodeLang) {
+      chip.style.background = 'rgba(124,109,250,0.15)';
+      chip.style.color = 'var(--accent2)';
+      chip.style.borderColor = 'rgba(124,109,250,0.3)';
+    }
+    chip.onclick = () => {
+      selectedCodeLang = lang;
+      buildCodeLangChips(); // re-render
+    };
+    container.appendChild(chip);
+  });
+}
+
+async function solveCoding() {
+  const q = document.getElementById('coding-input').value.trim().slice(0, 2000);
+  if (!q) return;
+  document.getElementById('coding-answer').innerHTML = '<span class="thinking">Solving</span>';
+  const sp = `You are an expert competitive programmer. Solve the coding question below in ${selectedCodeLang}. Include: working code in triple backticks, time/space complexity, and a brief explanation. Be thorough but concise.`;
+  const result = await window.ghostmind.callClaude(q, sp);
+  if (result.error) {
+    document.getElementById('coding-answer').innerHTML = `<span style="color:var(--red)">${escHtml(result.error)}</span>`;
+    return;
+  }
+  codingAnswer = result.text;
+  renderAnswer(result.text, 'coding-answer');
+}
+
+function copyCoding() {
+  if (codingAnswer) navigator.clipboard.writeText(codingAnswer);
+}
+
+// ── Notes
+function renderNotes() {
+  const list = document.getElementById('notes-list');
+  if (!notes.length) {
+    list.innerHTML = '<div class="placeholder">Notes saved automatically after each Q&A...</div>';
+    return;
+  }
+  list.innerHTML = notes.slice().reverse().map(n => `
+    <div class="note">
+      <div class="note-time">${n.time} · ${n.type}</div>
+      <div class="note-q">Q: ${escHtml(n.question.slice(0, 120))}${n.question.length > 120 ? '...' : ''}</div>
+      <div class="note-a">${escHtml(n.answer.slice(0, 200))}${n.answer.length > 200 ? '...' : ''}</div>
+    </div>
+  `).join('');
+}
+
+function clearNotes() {
+  notes = [];
+  document.getElementById('notes-count').textContent = '0 Q&As saved';
+  renderNotes();
+}
+
+// ── Settings
+async function saveKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  const statusEl = document.getElementById('key-status');
+  if (!key.startsWith('sk-ant-') || key.length < 20 || key.length > 300) {
+    statusEl.textContent = 'Invalid key format (should start with sk-ant- and be 20-300 chars)';
+    statusEl.style.color = 'var(--red)';
+    return;
+  }
+  const result = await window.ghostmind.saveApiKey(key);
+  if (result && result.error) {
+    statusEl.textContent = result.error;
+    statusEl.style.color = 'var(--red)';
+    return;
+  }
+  document.getElementById('api-key-input').value = '';
+  statusEl.textContent = `Key saved: ${key.slice(0,8)}...${key.slice(-4)}`;
+  statusEl.style.color = 'var(--accent)';
+}
+
+// ── Stealth controls
+async function toggleStealth() {
+  stealthOn = !stealthOn;
+  await window.ghostmind.toggleStealth(stealthOn);
+  const btn = document.getElementById('stealth-toggle-btn');
+  const dot = document.getElementById('stealth-dot');
+  const label = document.getElementById('stealth-label');
+  if (stealthOn) {
+    btn.textContent = 'ON';
+    btn.classList.remove('off');
+    dot.style.background = 'var(--accent)';
+    dot.style.boxShadow = '0 0 8px var(--accent)';
+    label.textContent = 'STEALTH ACTIVE';
+    label.style.color = 'var(--accent)';
+  } else {
+    btn.textContent = 'OFF';
+    btn.classList.add('off');
+    dot.style.background = 'var(--red)';
+    dot.style.boxShadow = '0 0 8px var(--red)';
+    label.textContent = 'STEALTH DISABLED';
+    label.style.color = 'var(--red)';
+  }
+}
+
+function toggleScreenShare(el) {
+  el.classList.toggle('on');
+  const on = el.classList.contains('on');
+  window.ghostmind.toggleStealth(on);
+}
+
+function toggleAlwaysOnTop(el) {
+  el.classList.toggle('on');
+  // Would call ipcRenderer to toggle always-on-top (extendable)
+}
+
+// ── Answer actions
+function copyAnswer() {
+  if (currentAnswer) {
+    navigator.clipboard.writeText(currentAnswer);
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = '✓ Copied';
+    setTimeout(() => btn.textContent = '📋 Copy', 2000);
+  }
+}
+
+function clearAnswer() {
+  currentAnswer = '';
+  document.getElementById('answer-box').innerHTML =
+    '<span style="color:var(--text3);font-style:italic;font-size:12px">Answer will appear here after a question is detected...</span>';
+}
+
+// ── Helpers
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+function formatTime(s) {
+  return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+}
+
+function setStatus(msg) {
+  document.getElementById('status-text').textContent = msg;
+}
+</script>
+</body>
+</html>
